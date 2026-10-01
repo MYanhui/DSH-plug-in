@@ -1,0 +1,69 @@
+{
+  "name": "dsh-control-center",
+  "version": "1.0.0",
+  "description": "Three settings pages for DeepSeek Harness: manage MCP servers, author or pull agent skills from GitHub, and keep a library of global personas.",
+  "type": "module",
+  "license": "MIT",
+  "author": "MYanhui",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MYanhui/DSH-plug-in.git"
+  },
+  "homepage": "https://github.com/MYanhui/DSH-plug-in",
+  "bugs": {
+    "url": "https://github.com/MYanhui/DSH-plug-in/issues"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "mcp",
+    "mcp-servers",
+    "skills",
+    "persona",
+    "settings"
+  ],
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "locale",
+    "scripts",
+    "icon.svg",
+    "cordis.patch.yml",
+    "LICENSE",
+    "README.md",
+    "README.zh.md"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.0-rc.1 <0.3.0-0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-host-webserver": ">=0.2.0-rc.1 <0.3.0-0",
+    "@deepseek-ai/dsh-system-prompt": ">=0.2.0-rc.1 <0.3.0-0"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general"
+      ]
+    }
+  }
+}

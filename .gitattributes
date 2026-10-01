@@ -1,0 +1,14 @@
+# Keep the repository's line endings LF regardless of the committer's platform.
+# This is a JavaScript package shipped to npm and to `dsh plugin add`; CRLF in a
+# checkout would be a silent difference between what is published and what is
+# reviewed here.
+* text=auto eol=lf
+
+# Binary assets are never normalized.
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.woff2 binary
+*.tgz binary
+*.tar binary

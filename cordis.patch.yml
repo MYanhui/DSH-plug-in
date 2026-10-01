@@ -1,0 +1,11 @@
+# dsh-control-center bundle patch.
+#
+# One host/Client dual-face row: the host half serves /control-center/api and
+# the persona prompt section, the browser half registers the three Settings
+# pages. This file is the `dsh.bundle.patch` layer of the package, so
+# `dsh plugin --profile <name> add dsh-control-center` mounts it; when the
+# package is dropped into the profile's node_modules by hand, the profile's own
+# cordis.patch.yml carries the same single insert instead.
+- insert:
+    - id: control-center
+      name: 'dsh-control-center'
