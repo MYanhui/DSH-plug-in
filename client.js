@@ -23,17 +23,64 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     // ── locale ──────────────────────────────────────────────────────────────
-    // The locale plugin publishes the active language on <html lang>; a page
-    // has no other need for a locale service, so this reads it directly.
-    const LANG = (() => {
+    // Copy follows the DSH i18n system: the client apply attaches the locale
+    // service (`ctx.locale`) and `t()` resolves the active locale from it on
+    // every call, so the Host-backed `locale.preference` wins over the raw
+    // browser language and a switch applies live.
+    //
+    // Reading `<html lang>` once at module-evaluation time is the trap this
+    // avoids. The locale plugin writes that attribute asynchronously, after the
+    // Host preference arrives over RPC, so a bundle that evaluates first
+    // latches `navigator.language` — which is not the user's DSH language. That
+    // made the copy depend on load order: sections created after the attribute
+    // was written read Chinese, sections created before it read English.
+    let localeService
+
+    /** Attach the Client locale service; a bare snapshot face is enough. */
+    function attachLocale(service) {
+      localeService = service
+    }
+
+    /** The active locale id, read live. The browser language is only a fallback. */
+    function activeLocale() {
+      if (localeService !== undefined && localeService !== null) {
+        try {
+          const active = localeService.getSnapshot?.().active
+          if (typeof active === 'string' && active !== '') return active
+        } catch {
+          // A service that throws is treated as absent, not as a failure.
+        }
+      }
       try {
-        const tag = document.documentElement.lang || navigator.language || 'en'
-        return String(tag).toLowerCase().startsWith('zh') ? 'zh' : 'en'
+        const tag =
+          (typeof document !== 'undefined' && document.documentElement.lang) ||
+          (typeof navigator !== 'undefined' && navigator.language) ||
+          'en'
+        return String(tag)
       } catch {
         return 'en'
       }
-    })()
-    const t = (zh, en) => (LANG === 'zh' ? zh : en)
+    }
+
+    const t = (zh, en) => (activeLocale().toLowerCase().startsWith('zh') ? zh : en)
+
+    /**
+     * Re-render a section when the locale changes.
+     *
+     * The settings navigation re-resolves `label` thunks on its own (the shell
+     * subscribes to the locale revision), but a section's body only re-renders
+     * if it subscribes too — otherwise the labels switch language and the page
+     * underneath them does not.
+     */
+    function useLocale() {
+      const [, setRevision] = useState(0)
+      useEffect(() => {
+        if (localeService === undefined || localeService === null || typeof localeService.subscribe !== 'function') {
+          return undefined
+        }
+        return localeService.subscribe(() => setRevision((value) => value + 1))
+      }, [])
+    }
 
     // ── styles ──────────────────────────────────────────────────────────────
     const CSS = `
@@ -425,6 +472,7 @@ window.__ModuleLoader__.load({
     }
 
     function McpSection() {
+      useLocale()
       const section = useSection('mcp.state')
       const [draft, setDraft] = useState(null)
       const patch = (changes) => setDraft((current) => ({ ...current, ...changes }))
@@ -606,6 +654,7 @@ window.__ModuleLoader__.load({
 
     // ── skills ──────────────────────────────────────────────────────────────
     function SkillsSection() {
+      useLocale()
       const section = useSection('skill.state')
       const [draft, setDraft] = useState(null)
       const [pulling, setPulling] = useState({ url: '', overwrite: false })
@@ -840,6 +889,7 @@ window.__ModuleLoader__.load({
 
     // ── personas ────────────────────────────────────────────────────────────
     function PersonaSection() {
+      useLocale()
       const section = useSection('persona.state')
       const [editing, setEditing] = useState(null)
       const [preview, setPreview] = useState(false)
@@ -1021,8 +1071,12 @@ window.__ModuleLoader__.load({
 
     // ── plugin ──────────────────────────────────────────────────────────────
     return {
-      inject: ['slots'],
+      // `locale` is declared rather than read lazily so the service is attached
+      // before the first render: a section that rendered first would show the
+      // browser language and only correct itself on the next locale revision.
+      inject: ['slots', 'locale'],
       apply(ctx) {
+        attachLocale(ctx.locale)
         const sections = [
           { id: 'control-center-mcp', order: 60, label: () => t('MCP 管理', 'MCP servers'), component: McpSection },
           { id: 'control-center-skills', order: 61, label: () => t('Skill 管理', 'Skills'), component: SkillsSection },

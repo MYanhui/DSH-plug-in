@@ -190,8 +190,30 @@ const fakeWindow = {
 }
 // Node 24 already owns a global `navigator`, so the browser globals are passed
 // as function parameters that shadow it rather than assigned globally.
-const fakeDocument = { documentElement: { lang: 'zh' } }
-const fakeNavigator = { language: 'zh-CN' }
+//
+// Deliberately adversarial: the browser reports English and `<html lang>` is
+// still empty, because the locale plugin writes it asynchronously. Only the
+// locale service knows the user's real DSH language ('zh'). A bundle that
+// latches the DOM or the browser language renders English here — which is the
+// reported bug.
+const fakeDocument = { documentElement: { lang: '' } }
+const fakeNavigator = { language: 'en-US' }
+const localeListeners = new Set()
+const fakeLocale = {
+  getSnapshot: () => ({ active: fakeLocale.active, locales: [], revision: fakeLocale.revision }),
+  subscribe(listener) {
+    localeListeners.add(listener)
+    return () => localeListeners.delete(listener)
+  },
+  /** Test helper: switch the DSH language and notify, as the real service does. */
+  setActive(id) {
+    fakeLocale.active = id
+    fakeLocale.revision += 1
+    for (const listener of [...localeListeners]) listener()
+  },
+  active: 'zh',
+  revision: 0,
+}
 const fakeFetch = async (url, options) => {
   const body = JSON.parse(options.body)
   calls.push(body.method)
@@ -218,7 +240,7 @@ const plugin = spec.factory((name) => {
   if (name === 'react') return React
   throw new Error(`the bundle required an unexpected module: ${name}`)
 })
-equal('the plugin injects the slot registry', plugin.inject, ['slots'])
+equal('the plugin injects the slot registry and the locale service', plugin.inject, ['slots', 'locale'])
 check('the plugin has an apply', typeof plugin.apply === 'function')
 
 console.log('\nslot registration')
@@ -234,6 +256,7 @@ plugin.apply({
       registered.push({ options, component })
     },
   },
+  locale: fakeLocale,
 })
 equal('every contribution waits on the settings Section ledger', [...new Set(injected)], ['settings.section'])
 equal('three sections registered', registered.length, 3)
@@ -281,6 +304,41 @@ equal(
   [...new Set(observed)].sort(),
   ['mcp.state', 'persona.state', 'skill.state'],
 )
+
+// ── locale ──────────────────────────────────────────────────────────────────
+// The regression this guards: the copy was resolved once at module-evaluation
+// time from `<html lang>` / `navigator.language`, both of which can disagree
+// with the user's DSH language (the attribute is written asynchronously, the
+// browser language is a separate fact). The result was copy that depended on
+// load order. It must follow the locale service, live.
+console.log('\nlocale')
+
+const skillsSection = registered.find((item) => item.options.id === 'control-center-skills')
+// The render loop clears the hook scopes between sections, so the skills
+// section is re-established here (one pass to fetch, one to render).
+scopes.clear()
+calls.length = 0
+await pass(skillsSection.component, {})
+
+check(
+  'the browser language and <html lang> are a deliberate mismatch',
+  fakeDocument.documentElement.lang === '' && fakeNavigator.language === 'en-US',
+  `lang="${fakeDocument.documentElement.lang}" navigator="${fakeNavigator.language}"`,
+)
+equal('labels follow the DSH language, not the browser', registered.map((item) => item.options.label()), ['MCP 管理', 'Skill 管理', '全局人设'])
+
+const skillsText = textOf(skillsSection.component, {})
+check('the body follows the DSH language too', skillsText.includes('拉取并安装'), skillsText.slice(0, 300))
+check('the body does not fall back to the browser language', !skillsText.includes('Pull and install'), skillsText.slice(0, 300))
+check('a section subscribes to the locale service', localeListeners.size > 0, `${localeListeners.size} listener(s)`)
+
+fakeLocale.setActive('en')
+equal('a live switch updates the labels', registered.map((item) => item.options.label()), ['MCP servers', 'Skills', 'Global persona'])
+const englishText = textOf(skillsSection.component, {})
+check('a live switch updates the body', englishText.includes('Pull and install'), englishText.slice(0, 300))
+
+fakeLocale.setActive('zh-TW')
+equal('a regional zh tag counts as Chinese', registered.map((item) => item.options.label()), ['MCP 管理', 'Skill 管理', '全局人设'])
 
 console.log(`\n${checks - failures}/${checks} checks passed`)
 process.exit(failures === 0 ? 0 : 1)
